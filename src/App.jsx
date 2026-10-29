@@ -29,6 +29,7 @@ export default function App() {
 
   const fileInputRef = useRef(null);
 
+  // Restaurar sessão salva ao carregar a aplicação
   useEffect(() => {
     const savedSessionId = localStorage.getItem('active_session_id');
     if (savedSessionId) {
@@ -42,7 +43,6 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setActiveSession(data);
-        setCurrentView('gallery');
         localStorage.setItem('active_session_id', sessionId);
 
         if (data.status === 'Processando' || data.processed_photos < data.total_photos) {
@@ -82,7 +82,8 @@ export default function App() {
 
       if (uploadRes.ok) {
         setUploadStatus('Upload concluído! Analisando...');
-        loadSessionData(sessionId);
+        await loadSessionData(sessionId);
+        setCurrentView('gallery');
       } else {
         alert('Falha no envio.');
       }
@@ -102,9 +103,17 @@ export default function App() {
   };
 
   const handleBackToDashboard = () => {
-    localStorage.removeItem('active_session_id');
-    setActiveSession(null);
     setCurrentView('dashboard');
+  };
+
+  const handleOpenSessions = () => {
+    const savedSessionId = localStorage.getItem('active_session_id');
+    if (savedSessionId) {
+      loadSessionData(savedSessionId);
+      setCurrentView('gallery');
+    } else {
+      setCurrentView('dashboard');
+    }
   };
 
   const handleExportZip = () => {
@@ -156,7 +165,7 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => setCurrentView('gallery')}
+              onClick={handleOpenSessions}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 currentView === 'gallery' 
                   ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
