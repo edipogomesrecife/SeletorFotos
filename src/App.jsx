@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Camera, 
   Upload, 
@@ -11,18 +11,26 @@ import {
   Layers, 
   ArrowLeft, 
   User, 
-  RefreshCw
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
+  FolderOpen
 } from 'lucide-react';
 
 const API_BASE_URL = "https://seletor-fotos-backend.onrender.com";
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'gallery', 'sessions', 'settings'
   const [activeSession, setActiveSession] = useState(null);
+  const [allSessions, setAllSessions] = useState([]);
+  const [filterCategory, setFilterCategory] = useState('all');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [blurThreshold, setBlurThreshold] = useState(60);
 
-  // 1. Restaurar última sessão salva ao recarregar a página (F5)
+  const fileInputRef = useRef(null);
+
+  // Restaurar sessão ao atualizar a página (F5)
   useEffect(() => {
     const savedSessionId = localStorage.getItem('active_session_id');
     if (savedSessionId) {
@@ -30,7 +38,7 @@ export default function App() {
     }
   }, []);
 
-  // 2. Buscar dados da sessão com Polling Automático (Atualiza a cada 3s se estiver processando)
+  // Buscar dados da sessão com Polling Automático
   const loadSessionData = async (sessionId) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
@@ -40,17 +48,16 @@ export default function App() {
         setCurrentView('gallery');
         localStorage.setItem('active_session_id', sessionId);
 
-        // Se ainda estiver processando, busca atualizações a cada 3 segundos
         if (data.status === 'Processando' || data.processed_photos < data.total_photos) {
           setTimeout(() => loadSessionData(sessionId), 3000);
         }
       }
     } catch (error) {
-      console.error('Erro ao carregar dados da sessão:', error);
+      console.error('Erro ao carregar sessão:', error);
     }
   };
 
-  // 3. Upload de fotos reais
+  // Upload de fotos
   const handleFileUpload = async (event) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -81,14 +88,20 @@ export default function App() {
         setUploadStatus('Upload concluído! Analisando...');
         loadSessionData(sessionId);
       } else {
-        alert('Falha ao enviar fotografias.');
+        alert('Falha no envio.');
       }
     } catch (error) {
-      console.error('Erro durante upload:', error);
+      console.error('Erro no upload:', error);
       alert('Erro de conexão com a API.');
     } finally {
       setIsUploading(false);
       setUploadStatus('');
+    }
+  };
+
+  const handleBoxClick = () => {
+    if (fileInputRef.current && !isUploading) {
+      fileInputRef.current.click();
     }
   };
 
@@ -98,12 +111,19 @@ export default function App() {
     setCurrentView('dashboard');
   };
 
+  // Filtragem na galeria
+  const filteredPhotos = activeSession?.photos?.filter(photo => {
+    if (filterCategory === 'recommended') return photo.recommendation === 'Recomendada';
+    if (filterCategory === 'review') return photo.recommendation === 'Revisar';
+    return true;
+  }) || [];
+
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
       {/* Sidebar Navigation */}
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between p-4 shrink-0">
         <div>
-          <div className="flex items-center gap-3 px-2 py-3 mb-6">
+          <div className="flex items-center gap-3 px-2 py-3 mb-6 cursor-pointer" onClick={handleBackToDashboard}>
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-500/20">
               <Camera className="w-6 h-6" />
             </div>
@@ -125,15 +145,35 @@ export default function App() {
               <Grid className="w-4 h-4" />
               Início
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors">
+
+            <button 
+              onClick={handleBoxClick}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors"
+            >
               <Upload className="w-4 h-4" />
               Nova análise
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors">
+
+            <button 
+              onClick={() => setCurrentView('sessions')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                currentView === 'sessions' 
+                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
               <Layers className="w-4 h-4" />
               Minhas sessões
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors">
+
+            <button 
+              onClick={() => setCurrentView('settings')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                currentView === 'settings' 
+                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
               <SlidersHorizontal className="w-4 h-4" />
               Configurações
             </button>
@@ -162,7 +202,19 @@ export default function App() {
           </div>
         </header>
 
-        {currentView === 'dashboard' ? (
+        {/* Input oculto compartilhado */}
+        <input 
+          ref={fileInputRef}
+          type="file" 
+          multiple 
+          accept="image/jpeg,image/jpg" 
+          onChange={handleFileUpload} 
+          disabled={isUploading} 
+          className="hidden" 
+        />
+
+        {/* VIEW: DASHBOARD */}
+        {currentView === 'dashboard' && (
           <div className="p-8 space-y-8 max-w-7xl mx-auto w-full">
             <div className="relative rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-blue-950/40 p-8 border border-slate-800 overflow-hidden shadow-2xl">
               <div className="relative z-10 max-w-2xl">
@@ -186,31 +238,31 @@ export default function App() {
               </div>
             </div>
 
-            {/* Upload Area Real */}
-            <div className="border-2 border-dashed border-blue-500/30 hover:border-blue-500/60 transition-all rounded-2xl p-8 bg-slate-900/30 text-center flex flex-col items-center justify-center cursor-pointer group">
-              <div className="w-14 h-14 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <Upload className="w-7 h-7" />
+            {/* Caixa de Upload clicável */}
+            <div 
+              onClick={handleBoxClick}
+              className="border-2 border-dashed border-blue-500/30 hover:border-blue-500/60 transition-all rounded-2xl p-12 bg-slate-900/30 text-center flex flex-col items-center justify-center cursor-pointer group"
+            >
+              <div className="w-16 h-16 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <Upload className="w-8 h-8" />
               </div>
               <h3 className="text-lg font-semibold text-slate-100 mb-1">
                 {isUploading ? uploadStatus : "Arraste e solte suas fotos aqui"}
               </h3>
-              <p className="text-sm text-slate-400 mb-4">ou clique para selecionar do seu computador</p>
+              <p className="text-sm text-slate-400 mb-6">ou clique em qualquer lugar nesta área para selecionar do computador</p>
               
-              <label className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-xl transition-colors shadow-lg shadow-blue-600/20 cursor-pointer">
-                <span>{isUploading ? "Processando..." : "Selecionar fotos"}</span>
-                <input 
-                  type="file" 
-                  multiple 
-                  accept="image/jpeg,image/jpg" 
-                  onChange={handleFileUpload} 
-                  disabled={isUploading} 
-                  className="hidden" 
-                />
-              </label>
+              <button 
+                type="button"
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-xl transition-colors shadow-lg shadow-blue-600/20"
+              >
+                {isUploading ? "Processando..." : "Selecionar fotos"}
+              </button>
             </div>
           </div>
-        ) : (
-          /* Gallery Review View */
+        )}
+
+        {/* VIEW: GALERIA */}
+        {currentView === 'gallery' && (
           <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-4">
@@ -238,14 +290,42 @@ export default function App() {
               </button>
             </div>
 
+            {/* Abas de Filtro */}
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setFilterCategory('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                Todas ({activeSession?.photos?.length || 0})
+              </button>
+              <button 
+                onClick={() => setFilterCategory('recommended')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterCategory === 'recommended' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                Recomendadas
+              </button>
+              <button 
+                onClick={() => setFilterCategory('review')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterCategory === 'review' ? 'bg-amber-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                Revisar
+              </button>
+            </div>
+
             {/* Grid de Fotos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-              {activeSession?.photos?.map((photo) => (
+              {filteredPhotos.map((photo) => (
                 <div key={photo.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden p-4 space-y-3">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-slate-200 truncate max-w-[150px]">{photo.filename}</span>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      photo.recommendation === 'Recomendada' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                      photo.recommendation === 'Recomendada' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                     }`}>
                       {photo.recommendation || 'Aguardando'}
                     </span>
@@ -263,6 +343,52 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: SESSÕES */}
+        {currentView === 'sessions' && (
+          <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
+            <h2 className="text-2xl font-bold text-white">Minhas Sessões</h2>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400 space-y-4">
+              <FolderOpen className="w-12 h-12 text-slate-600 mx-auto" />
+              <p className="text-sm">Sua sessão atual está salva e em andamento no sistema.</p>
+              {activeSession && (
+                <button 
+                  onClick={() => setCurrentView('gallery')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-500 transition-colors"
+                >
+                  Abrir Sessão Atual
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: CONFIGURAÇÕES */}
+        {currentView === 'settings' && (
+          <div className="p-8 space-y-6 max-w-4xl mx-auto w-full">
+            <h2 className="text-2xl font-bold text-white mb-6">Configurações de Análise</h2>
+            
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+              <div>
+                <h3 className="text-base font-semibold text-slate-200 mb-1">Limiar de Nitidez (Variância do Laplaciano)</h3>
+                <p className="text-xs text-slate-400 mb-4">
+                  Valores acima deste número serão marcados como "Recomendada". Valores abaixo serão "Revisar".
+                </p>
+                <div className="flex items-center gap-4">
+                  <input 
+                    type="range" 
+                    min="20" 
+                    max="150" 
+                    value={blurThreshold} 
+                    onChange={(e) => setBlurThreshold(Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <span className="text-sm font-bold text-blue-400 w-12 text-right">{blurThreshold}</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
