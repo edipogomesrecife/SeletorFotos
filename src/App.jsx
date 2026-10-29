@@ -13,8 +13,6 @@ import {
   User, 
   RefreshCw,
   X,
-  CheckCircle,
-  XCircle,
   Maximize2
 } from 'lucide-react';
 
@@ -27,6 +25,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [selectedPhotoModal, setSelectedPhotoModal] = useState(null);
+  const [blurThreshold, setBlurThreshold] = useState(60);
 
   const fileInputRef = useRef(null);
 
@@ -63,13 +62,7 @@ export default function App() {
       setIsUploading(true);
       setUploadStatus('Criando sessão...');
 
-      const sessionRes = await fetch(`${API_BASE_URL}/api/sessions?title=Análise%20de%20Fotos`, {
-        method: 'POST'
-      });
-      const sessionData = await sessionRes.json();
-      const sessionId = sessionData.session_id;
-
-      setUploadStatus(`Enviando ${files.length} foto(s)...`);
+      const sessionRes = await fetch(`${API_BASE_URL}/api/sessions?title=Análise\%20de\%20Fotos`, { method: 'POST' }); const sessionData = await sessionRes.json(); const sessionId = sessionData.session_id;  setUploadStatus(`Enviando ${files.length} foto(s)...`);
 
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) {
@@ -166,6 +159,18 @@ export default function App() {
             >
               <Layers className="w-4 h-4" />
               Minhas sessões
+            </button>
+
+            <button 
+              onClick={() => setCurrentView('settings')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                currentView === 'settings' 
+                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Configurações
             </button>
           </nav>
         </div>
@@ -316,7 +321,6 @@ export default function App() {
                   key={photo.id} 
                   className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg group hover:border-slate-700 transition-all flex flex-col"
                 >
-                  {/* Container da Imagem Thumbnail */}
                   <div 
                     onClick={() => setSelectedPhotoModal(photo)}
                     className="relative aspect-video bg-slate-950 overflow-hidden cursor-pointer"
@@ -337,86 +341,4 @@ export default function App() {
                       </span>
                     </div>
 
-                    <span className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold shadow-md ${
-                      photo.recommendation === 'Recomendada' 
-                        ? 'bg-emerald-600 text-white' 
-                        : 'bg-amber-500 text-slate-950'
-                    }`}>
-                      {photo.recommendation || 'Aguardando'}
-                    </span>
-                  </div>
-
-                  {/* Informações da Análise */}
-                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
-                    <span className="font-semibold text-slate-200 text-xs truncate block">{photo.filename}</span>
-
-                    <div className="space-y-1 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-                      <p className="flex justify-between">
-                        <span>Nitidez:</span> 
-                        <span className="text-slate-200 font-medium">{photo.blur_score ?? 'Calculando...'}</span>
-                      </p>
-                      <p className="flex justify-between">
-                        <span>Exposição:</span> 
-                        <span className="text-slate-200 font-medium">{photo.exposure_status ?? 'Calculando...'}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* MODAL DE AMPLIAÇÃO / ZOOM DA FOTO */}
-        {selectedPhotoModal && (
-          <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="relative max-w-5xl w-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-              {/* Header do Modal */}
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
-                <div>
-                  <h3 className="font-bold text-white text-base">{selectedPhotoModal.filename}</h3>
-                  <p className="text-xs text-slate-400">
-                    Nitidez: <span className="text-slate-200 font-semibold">{selectedPhotoModal.blur_score}</span> | Exposição: <span className="text-slate-200 font-semibold">{selectedPhotoModal.exposure_status}</span>
-                  </p>
-                </div>
-                <button 
-                  onClick={() => setSelectedPhotoModal(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Corpo da Foto Expandida */}
-              <div className="flex-1 bg-slate-950 flex items-center justify-center p-4 overflow-hidden">
-                <img 
-                  src={`${API_BASE_URL}${selectedPhotoModal.url}`} 
-                  alt={selectedPhotoModal.filename} 
-                  className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl"
-                />
-              </div>
-
-              {/* Rodapé com Etiqueta */}
-              <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  selectedPhotoModal.recommendation === 'Recomendada' 
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                }`}>
-                  Status do Algoritmo: {selectedPhotoModal.recommendation}
-                </span>
-
-                <button 
-                  onClick={() => setSelectedPhotoModal(null)}
-                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs rounded-xl transition-colors"
-                >
-                  Fechar Visualização
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-}
+                    <span className={`absolute top-2 right-2 px-2 py-0.5
