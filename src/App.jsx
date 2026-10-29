@@ -13,7 +13,9 @@ import {
   User, 
   RefreshCw,
   X,
-  Maximize2
+  Maximize2,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
 const API_BASE_URL = "https://seletor-fotos-backend.onrender.com";
@@ -29,21 +31,54 @@ export default function App() {
 
   const fileInputRef = useRef(null);
 
-  // Restaurar sessão salva ao carregar a aplicação
+  // Restaurar sessão e seleções salvas ao carregar
   useEffect(() => {
-    const savedSessionId = localStorage.getItem('active_session_id');
-    if (savedSessionId) {
-      loadSessionData(savedSessionId);
+    const savedSession = localStorage.getItem('active_session_data');
+    if (savedSession) {
+      try {
+        const parsed = JSON.parse(savedSession);
+        setActiveSession(parsed);
+      } catch (e) {
+        console.error('Erro ao restaurar sessão local:', e);
+      }
+    } else {
+      const savedSessionId = localStorage.getItem('active_session_id');
+      if (savedSessionId) {
+        loadSessionData(savedSessionId);
+      }
     }
   }, []);
+
+  // Salvar sessão ativa no localStorage sempre que houver modificações
+  useEffect(() => {
+    if (activeSession) {
+      localStorage.setItem('active_session_data', JSON.stringify(activeSession));
+      localStorage.setItem('active_session_id', activeSession.id);
+    }
+  }, [activeSession]);
 
   const loadSessionData = async (sessionId) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
       if (res.ok) {
         const data = await res.json();
-        setActiveSession(data);
-        localStorage.setItem('active_session_id', sessionId);
+        
+        // Preserva seleções manuais locais se já existirem no cache
+        setActiveSession(prev => {
+          if (prev && prev.id === data.id && prev.photos) {
+            const localMap = new Map(prev.photos.map(p => [p.id, p.userStatus]));
+            data.photos = data.photos.map(p => ({
+              ...p,
+              userStatus: localMap.get(p.id) || (p.recommendation === 'Recomendada' ? 'approved' : 'pending')
+            }));
+          } else {
+            data.photos = data.photos.map(p => ({
+              ...p,
+              userStatus: p.recommendation === 'Recomendada' ? 'approved' : 'pending'
+            }));
+          }
+          return data;
+        });
 
         if (data.status === 'Processando' || data.processed_photos < data.total_photos) {
           setTimeout(() => loadSessionData(sessionId), 3000);
@@ -96,6 +131,28 @@ export default function App() {
     }
   };
 
+  // Alternar status de aprovação/descarte manual de uma foto
+  const togglePhotoStatus = (photoId, status) => {
+    setActiveSession(prev => {
+      if (!prev) return prev;
+      const updatedPhotos = prev.photos.map(photo => {
+        if (photo.id === photoId) {
+          const newStatus = photo.userStatus === status ? 'pending' : status;
+          return { ...photo, userStatus: newStatus };
+        }
+        return photo;
+      });
+      return { ...prev, photos: updatedPhotos };
+    });
+
+    if (selectedPhotoModal && selectedPhotoModal.id === photoId) {
+      setSelectedPhotoModal(prev => ({
+        ...prev,
+        userStatus: prev.userStatus === status ? 'pending' : status
+      }));
+    }
+  };
+
   const handleBoxClick = () => {
     if (fileInputRef.current && !isUploading) {
       fileInputRef.current.click();
@@ -107,12 +164,16 @@ export default function App() {
   };
 
   const handleOpenSessions = () => {
-    const savedSessionId = localStorage.getItem('active_session_id');
-    if (savedSessionId) {
-      loadSessionData(savedSessionId);
+    if (activeSession) {
       setCurrentView('gallery');
     } else {
-      setCurrentView('dashboard');
+      const savedSessionId = localStorage.getItem('active_session_id');
+      if (savedSessionId) {
+        loadSessionData(savedSessionId);
+        setCurrentView('gallery');
+      } else {
+        setCurrentView('dashboard');
+      }
     }
   };
 
@@ -125,6 +186,8 @@ export default function App() {
   const filteredPhotos = activeSession?.photos?.filter(photo => {
     if (filterCategory === 'recommended') return photo.recommendation === 'Recomendada';
     if (filterCategory === 'review') return photo.recommendation === 'Revisar';
+    if (filterCategory === 'approved') return photo.userStatus === 'approved';
+    if (filterCategory === 'rejected') return photo.userStatus === 'rejected';
     return true;
   }) || [];
 
@@ -269,7 +332,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW: GALERIA COM MINIATURAS */}
+        {/* VIEW: GALERIA COM MINIATURAS E REVISÃO SALVA */}
         {currentView === 'gallery' && (
           <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -329,28 +392,35 @@ export default function App() {
               </button>
             </div>
 
-            {/* Grid com Miniaturas Reais */}
+            {/* Grid com Ações de Aprovar/Descartar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {filteredPhotos.map((photo) => (
                 <div 
                   key={photo.id} 
-                  className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg group hover:border-slate-700 transition-all flex flex-col"
+                  className={`bg-slate-900 border rounded-xl overflow-hidden shadow-lg group transition-all flex flex-col ${
+                    photo.userStatus === 'approved' 
+                      ? 'border-emerald-500/50 ring-1 ring-emerald-500/20' 
+                      : photo.userStatus === 'rejected' 
+                      ? 'border-rose-500/50 opacity-60' 
+                      : 'border-slate-800 hover:border-slate-700'
+                  }`}
                 >
-                  <div 
-                    onClick={() => setSelectedPhotoModal(photo)}
-                    className="relative aspect-video bg-slate-950 overflow-hidden cursor-pointer"
-                  >
+                  <div className="relative aspect-video bg-slate-950 overflow-hidden">
                     {photo.url ? (
                       <img 
                         src={`${API_BASE_URL}${photo.url}`} 
                         alt={photo.filename} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300" 
+                        onClick={() => setSelectedPhotoModal(photo)}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">Sem imagem</div>
                     )}
 
-                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div 
+                      onClick={() => setSelectedPhotoModal(photo)}
+                      className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                    >
                       <span className="p-2 rounded-full bg-slate-900/80 text-white border border-slate-700">
                         <Maximize2 className="w-4 h-4" />
                       </span>
@@ -365,18 +435,44 @@ export default function App() {
                     </span>
                   </div>
 
-                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
-                    <span className="font-semibold text-slate-200 text-xs truncate block">{photo.filename}</span>
+                  <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-200 text-xs truncate block mb-2">{photo.filename}</span>
 
-                    <div className="space-y-1 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-                      <p className="flex justify-between">
-                        <span>Nitidez:</span> 
-                        <span className="text-slate-200 font-medium">{photo.blur_score ?? 'Calculando...'}</span>
-                      </p>
-                      <p className="flex justify-between">
-                        <span>Exposição:</span> 
-                        <span className="text-slate-200 font-medium">{photo.exposure_status ?? 'Calculando...'}</span>
-                      </p>
+                      <div className="space-y-1 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
+                        <p className="flex justify-between">
+                          <span>Nitidez:</span> 
+                          <span className="text-slate-200 font-medium">{photo.blur_score ?? 'Calculando...'}</span>
+                        </p>
+                        <p className="flex justify-between">
+                          <span>Exposição:</span> 
+                          <span className="text-slate-200 font-medium">{photo.exposure_status ?? 'Calculando...'}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Botões para alterar status manual */}
+                    <div className="flex gap-2 pt-1 border-t border-slate-800/60">
+                      <button 
+                        onClick={() => togglePhotoStatus(photo.id, 'approved')}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
+                          photo.userStatus === 'approved' 
+                            ? 'bg-emerald-600 text-white' 
+                            : 'bg-slate-800 text-slate-300 hover:bg-emerald-600/20 hover:text-emerald-400'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
+                      </button>
+                      <button 
+                        onClick={() => togglePhotoStatus(photo.id, 'rejected')}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
+                          photo.userStatus === 'rejected' 
+                            ? 'bg-rose-600 text-white' 
+                            : 'bg-slate-800 text-slate-300 hover:bg-rose-600/20 hover:text-rose-400'
+                        }`}
+                      >
+                        <XCircle className="w-3.5 h-3.5" /> Descartar
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -448,12 +544,34 @@ export default function App() {
                   Status do Algoritmo: {selectedPhotoModal.recommendation}
                 </span>
 
-                <button 
-                  onClick={() => setSelectedPhotoModal(null)}
-                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs rounded-xl transition-colors"
-                >
-                  Fechar Visualização
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => togglePhotoStatus(selectedPhotoModal.id, 'approved')}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                      selectedPhotoModal.userStatus === 'approved' 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'bg-slate-800 text-slate-300 hover:bg-emerald-600/20 hover:text-emerald-400'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Aprovar
+                  </button>
+                  <button 
+                    onClick={() => togglePhotoStatus(selectedPhotoModal.id, 'rejected')}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                      selectedPhotoModal.userStatus === 'rejected' 
+                        ? 'bg-rose-600 text-white' 
+                        : 'bg-slate-800 text-slate-300 hover:bg-rose-600/20 hover:text-rose-400'
+                    }`}
+                  >
+                    <XCircle className="w-4 h-4" /> Descartar
+                  </button>
+                  <button 
+                    onClick={() => setSelectedPhotoModal(null)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs rounded-xl transition-colors ml-2"
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
             </div>
           </div>
