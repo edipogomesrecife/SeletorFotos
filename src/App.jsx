@@ -11,10 +11,7 @@ import {
   Layers, 
   ArrowLeft, 
   User, 
-  ChevronRight,
-  CheckCircle2,
-  Clock,
-  AlertTriangle
+  RefreshCw
 } from 'lucide-react';
 
 const API_BASE_URL = "https://seletor-fotos-backend.onrender.com";
@@ -22,11 +19,38 @@ const API_BASE_URL = "https://seletor-fotos-backend.onrender.com";
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [activeSession, setActiveSession] = useState(null);
-  const [filterCategory, setFilterCategory] = useState('all');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
 
-  // 1. Função para criar nova sessão e fazer upload de fotos reais
+  // 1. Restaurar última sessão salva ao recarregar a página (F5)
+  useEffect(() => {
+    const savedSessionId = localStorage.getItem('active_session_id');
+    if (savedSessionId) {
+      loadSessionData(savedSessionId);
+    }
+  }, []);
+
+  // 2. Buscar dados da sessão com Polling Automático (Atualiza a cada 3s se estiver processando)
+  const loadSessionData = async (sessionId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveSession(data);
+        setCurrentView('gallery');
+        localStorage.setItem('active_session_id', sessionId);
+
+        // Se ainda estiver processando, busca atualizações a cada 3 segundos
+        if (data.status === 'Processando' || data.processed_photos < data.total_photos) {
+          setTimeout(() => loadSessionData(sessionId), 3000);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados da sessão:', error);
+    }
+  };
+
+  // 3. Upload de fotos reais
   const handleFileUpload = async (event) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -35,7 +59,6 @@ export default function App() {
       setIsUploading(true);
       setUploadStatus('Criando sessão...');
 
-      // Criar Sessão no Backend
       const sessionRes = await fetch(`${API_BASE_URL}/api/sessions?title=Análise%20de%20Fotos`, {
         method: 'POST'
       });
@@ -44,22 +67,19 @@ export default function App() {
 
       setUploadStatus(`Enviando ${files.length} foto(s)...`);
 
-      // Preparar formulário de envio de arquivos
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) {
         formData.append('files', files[i]);
       }
 
-      // Enviar arquivos para a API
       const uploadRes = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/upload`, {
         method: 'POST',
         body: formData
       });
 
       if (uploadRes.ok) {
-        setUploadStatus('Upload concluído! Carregando sessão...');
-        // Abrir a sessão criada
-        await loadSessionData(sessionId);
+        setUploadStatus('Upload concluído! Analisando...');
+        loadSessionData(sessionId);
       } else {
         alert('Falha ao enviar fotografias.');
       }
@@ -72,46 +92,11 @@ export default function App() {
     }
   };
 
-  // 2. Buscar os dados atualizados de uma sessão do backend
-  const loadSessionData = async (sessionId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setActiveSession(data);
-        setCurrentView('gallery');
-      }
-    } catch (error) {
-      console.error('Erro ao carregar dados da sessão:', error);
-    }
+  const handleBackToDashboard = () => {
+    localStorage.removeItem('active_session_id');
+    setActiveSession(null);
+    setCurrentView('dashboard');
   };
-
-  const recentSessionsMock = [
-    {
-      id: 'sess-001',
-      title: 'Aniversário da Clara',
-      date: '25 de out. de 2026',
-      totalPhotos: 482,
-      status: 'Concluída',
-      recommended: 312,
-      duplicates: 98,
-      review: 54,
-      discarded: 18,
-      coverImg: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?auto=format&fit=crop&q=80&w=400'
-    },
-    {
-      id: 'sess-003',
-      title: 'Formatura Infantil',
-      date: '18 de out. de 2026',
-      totalPhotos: 756,
-      status: 'Concluída',
-      recommended: 521,
-      duplicates: 142,
-      review: 73,
-      discarded: 20,
-      coverImg: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=400'
-    }
-  ];
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
@@ -130,7 +115,7 @@ export default function App() {
 
           <nav className="space-y-1">
             <button 
-              onClick={() => setCurrentView('dashboard')}
+              onClick={handleBackToDashboard}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 currentView === 'dashboard' 
                   ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
@@ -223,40 +208,26 @@ export default function App() {
                 />
               </label>
             </div>
-
-            {/* Recent Sessions */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-white">Sessões recentes</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {recentSessionsMock.map((session) => (
-                  <div key={session.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
-                    <div className="flex items-center gap-3 mb-3">
-                      <img src={session.coverImg} alt={session.title} className="w-12 h-12 rounded-lg object-cover" />
-                      <div>
-                        <h4 className="font-semibold text-slate-100 text-sm">{session.title}</h4>
-                        <p className="text-xs text-slate-400">{session.date} • {session.totalPhotos} fotos</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         ) : (
-          /* Gallery Review View com dados da API */
+          /* Gallery Review View */
           <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-4">
                 <button 
-                  onClick={() => setCurrentView('dashboard')}
+                  onClick={handleBackToDashboard}
                   className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 <div>
                   <h2 className="text-xl font-bold text-white">{activeSession?.title || 'Sessão de Análise'}</h2>
-                  <p className="text-xs text-slate-400">
-                    Status: <span className="text-blue-400 font-semibold">{activeSession?.status}</span> ({activeSession?.processed_photos} / {activeSession?.total_photos} processadas)
+                  <p className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                    Status: <span className="text-blue-400 font-semibold">{activeSession?.status}</span> 
+                    ({activeSession?.processed_photos} / {activeSession?.total_photos} processadas)
+                    {activeSession?.status === 'Processando' && (
+                      <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                    )}
                   </p>
                 </div>
               </div>
@@ -267,7 +238,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Photo Grid do Backend */}
+            {/* Grid de Fotos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {activeSession?.photos?.map((photo) => (
                 <div key={photo.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden p-4 space-y-3">
@@ -276,13 +247,19 @@ export default function App() {
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       photo.recommendation === 'Recomendada' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
                     }`}>
-                      {photo.recommendation}
+                      {photo.recommendation || 'Aguardando'}
                     </span>
                   </div>
 
-                  <div className="space-y-1 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <p>Nitidez: <span className="text-slate-200 font-medium">{photo.blur_score}</span></p>
-                    <p>Exposição: <span className="text-slate-200 font-medium">{photo.exposure_status}</span></p>
+                  <div className="space-y-1.5 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                    <p className="flex justify-between">
+                      <span>Nitidez:</span> 
+                      <span className="text-slate-200 font-medium">{photo.blur_score ?? 'Calculando...'}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span>Exposição:</span> 
+                      <span className="text-slate-200 font-medium">{photo.exposure_status ?? 'Calculando...'}</span>
+                    </p>
                   </div>
                 </div>
               ))}
