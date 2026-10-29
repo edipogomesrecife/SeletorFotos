@@ -31,13 +31,11 @@ export default function App() {
 
   const fileInputRef = useRef(null);
 
-  // Restaurar sessão e seleções salvas ao carregar
   useEffect(() => {
     const savedSession = localStorage.getItem('active_session_data');
     if (savedSession) {
       try {
-        const parsed = JSON.parse(savedSession);
-        setActiveSession(parsed);
+        setActiveSession(JSON.parse(savedSession));
       } catch (e) {
         console.error('Erro ao restaurar sessão local:', e);
       }
@@ -49,7 +47,6 @@ export default function App() {
     }
   }, []);
 
-  // Salvar sessão ativa no localStorage sempre que houver modificações
   useEffect(() => {
     if (activeSession) {
       localStorage.setItem('active_session_data', JSON.stringify(activeSession));
@@ -63,18 +60,17 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         
-        // Preserva seleções manuais locais se já existirem no cache
         setActiveSession(prev => {
           if (prev && prev.id === data.id && prev.photos) {
             const localMap = new Map(prev.photos.map(p => [p.id, p.userStatus]));
             data.photos = data.photos.map(p => ({
               ...p,
-              userStatus: localMap.get(p.id) || (p.recommendation === 'Recomendada' ? 'approved' : 'pending')
+              userStatus: localMap.get(p.id) || (p.selected ? 'approved' : 'pending')
             }));
           } else {
             data.photos = data.photos.map(p => ({
               ...p,
-              userStatus: p.recommendation === 'Recomendada' ? 'approved' : 'pending'
+              userStatus: p.selected ? 'approved' : 'pending'
             }));
           }
           return data;
@@ -131,14 +127,19 @@ export default function App() {
     }
   };
 
-  // Alternar status de aprovação/descarte manual de uma foto
-  const togglePhotoStatus = (photoId, status) => {
+  // Sincroniza o botão de Aprovar/Descartar com o backend para a exportação ZIP
+  const togglePhotoStatus = async (photoId, status) => {
+    const newStatus = selectedPhotoModal?.id === photoId && selectedPhotoModal?.userStatus === status
+      ? 'pending'
+      : status;
+
+    const isSelected = newStatus === 'approved';
+
     setActiveSession(prev => {
       if (!prev) return prev;
       const updatedPhotos = prev.photos.map(photo => {
         if (photo.id === photoId) {
-          const newStatus = photo.userStatus === status ? 'pending' : status;
-          return { ...photo, userStatus: newStatus };
+          return { ...photo, userStatus: newStatus, selected: isSelected };
         }
         return photo;
       });
@@ -148,8 +149,20 @@ export default function App() {
     if (selectedPhotoModal && selectedPhotoModal.id === photoId) {
       setSelectedPhotoModal(prev => ({
         ...prev,
-        userStatus: prev.userStatus === status ? 'pending' : status
+        userStatus: newStatus,
+        selected: isSelected
       }));
+    }
+
+    // Atualiza seleção na base de dados
+    try {
+      await fetch(`${API_BASE_URL}/api/photos/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_id: photoId, selected: isSelected })
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar seleção na API:', err);
     }
   };
 
@@ -182,6 +195,8 @@ export default function App() {
       window.open(`${API_BASE_URL}/api/sessions/${activeSession.id}/export`, '_blank');
     }
   };
+
+  const approvedCount = activeSession?.photos?.filter(p => p.selected || p.userStatus === 'approved').length || 0;
 
   const filteredPhotos = activeSession?.photos?.filter(photo => {
     if (filterCategory === 'recommended') return photo.recommendation === 'Recomendada';
@@ -332,7 +347,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW: GALERIA COM MINIATURAS E REVISÃO SALVA */}
+        {/* VIEW: GALERIA COM SELEÇÃO INTEGRADA AO BOTÃO APROVAR */}
         {currentView === 'gallery' && (
           <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -357,10 +372,15 @@ export default function App() {
 
               <button 
                 onClick={handleExportZip}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl transition-colors shadow-lg shadow-emerald-600/20"
+                disabled={approvedCount === 0}
+                className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-xl transition-colors shadow-lg ${
+                  approvedCount > 0 
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20 cursor-pointer' 
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                }`}
               >
                 <Download className="w-4 h-4" />
-                Exportar Selecionadas (ZIP)
+                Exportar Aprovadas ({approvedCount} ZIP)
               </button>
             </div>
 
@@ -380,7 +400,7 @@ export default function App() {
                   filterCategory === 'recommended' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                Recomendadas
+                Recomendadas pelo Algoritmo
               </button>
               <button 
                 onClick={() => setFilterCategory('review')}
@@ -392,16 +412,16 @@ export default function App() {
               </button>
             </div>
 
-            {/* Grid com Ações de Aprovar/Descartar */}
+            {/* Grid de Fotos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {filteredPhotos.map((photo) => (
                 <div 
                   key={photo.id} 
                   className={`bg-slate-900 border rounded-xl overflow-hidden shadow-lg group transition-all flex flex-col ${
                     photo.userStatus === 'approved' 
-                      ? 'border-emerald-500/50 ring-1 ring-emerald-500/20' 
+                      ? 'border-emerald-500/80 ring-2 ring-emerald-500/20' 
                       : photo.userStatus === 'rejected' 
-                      ? 'border-rose-500/50 opacity-60' 
+                      ? 'border-rose-500/40 opacity-60' 
                       : 'border-slate-800 hover:border-slate-700'
                   }`}
                 >
@@ -451,13 +471,13 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Botões para alterar status manual */}
+                    {/* Botões que controlam a aprovação e seleção para download */}
                     <div className="flex gap-2 pt-1 border-t border-slate-800/60">
                       <button 
                         onClick={() => togglePhotoStatus(photo.id, 'approved')}
                         className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
                           photo.userStatus === 'approved' 
-                            ? 'bg-emerald-600 text-white' 
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30' 
                             : 'bg-slate-800 text-slate-300 hover:bg-emerald-600/20 hover:text-emerald-400'
                         }`}
                       >
@@ -467,7 +487,7 @@ export default function App() {
                         onClick={() => togglePhotoStatus(photo.id, 'rejected')}
                         className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
                           photo.userStatus === 'rejected' 
-                            ? 'bg-rose-600 text-white' 
+                            ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30' 
                             : 'bg-slate-800 text-slate-300 hover:bg-rose-600/20 hover:text-rose-400'
                         }`}
                       >
@@ -508,7 +528,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MODAL DE AMPLIAÇÃO / ZOOM DA FOTO */}
+        {/* MODAL DE ZOOM */}
         {selectedPhotoModal && (
           <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
             <div className="relative max-w-5xl w-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
