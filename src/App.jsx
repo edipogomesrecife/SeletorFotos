@@ -12,25 +12,24 @@ import {
   ArrowLeft, 
   User, 
   RefreshCw,
-  CheckCircle2,
-  AlertTriangle,
-  FolderOpen
+  X,
+  CheckCircle,
+  XCircle,
+  Maximize2
 } from 'lucide-react';
 
 const API_BASE_URL = "https://seletor-fotos-backend.onrender.com";
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'gallery', 'sessions', 'settings'
+  const [currentView, setCurrentView] = useState('dashboard');
   const [activeSession, setActiveSession] = useState(null);
-  const [allSessions, setAllSessions] = useState([]);
   const [filterCategory, setFilterCategory] = useState('all');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
-  const [blurThreshold, setBlurThreshold] = useState(60);
+  const [selectedPhotoModal, setSelectedPhotoModal] = useState(null);
 
   const fileInputRef = useRef(null);
 
-  // Restaurar sessão ao atualizar a página (F5)
   useEffect(() => {
     const savedSessionId = localStorage.getItem('active_session_id');
     if (savedSessionId) {
@@ -38,7 +37,6 @@ export default function App() {
     }
   }, []);
 
-  // Buscar dados da sessão com Polling Automático
   const loadSessionData = async (sessionId) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
@@ -57,7 +55,6 @@ export default function App() {
     }
   };
 
-  // Upload de fotos
   const handleFileUpload = async (event) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -111,7 +108,12 @@ export default function App() {
     setCurrentView('dashboard');
   };
 
-  // Filtragem na galeria
+  const handleExportZip = () => {
+    if (activeSession) {
+      window.open(`${API_BASE_URL}/api/sessions/${activeSession.id}/export`, '_blank');
+    }
+  };
+
   const filteredPhotos = activeSession?.photos?.filter(photo => {
     if (filterCategory === 'recommended') return photo.recommendation === 'Recomendada';
     if (filterCategory === 'review') return photo.recommendation === 'Revisar';
@@ -155,27 +157,15 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => setCurrentView('sessions')}
+              onClick={() => setCurrentView('gallery')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                currentView === 'sessions' 
+                currentView === 'gallery' 
                   ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
                   : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
               }`}
             >
               <Layers className="w-4 h-4" />
               Minhas sessões
-            </button>
-
-            <button 
-              onClick={() => setCurrentView('settings')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                currentView === 'settings' 
-                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' 
-                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-              }`}
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              Configurações
             </button>
           </nav>
         </div>
@@ -202,7 +192,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Input oculto compartilhado */}
         <input 
           ref={fileInputRef}
           type="file" 
@@ -238,7 +227,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Caixa de Upload clicável */}
             <div 
               onClick={handleBoxClick}
               className="border-2 border-dashed border-blue-500/30 hover:border-blue-500/60 transition-all rounded-2xl p-12 bg-slate-900/30 text-center flex flex-col items-center justify-center cursor-pointer group"
@@ -261,7 +249,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW: GALERIA */}
+        {/* VIEW: GALERIA COM MINIATURAS */}
         {currentView === 'gallery' && (
           <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -284,9 +272,12 @@ export default function App() {
                 </div>
               </div>
 
-              <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl transition-colors">
+              <button 
+                onClick={handleExportZip}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-xl transition-colors shadow-lg shadow-emerald-600/20"
+              >
                 <Download className="w-4 h-4" />
-                Exportar Selecionadas
+                Exportar Selecionadas (ZIP)
               </button>
             </div>
 
@@ -318,28 +309,57 @@ export default function App() {
               </button>
             </div>
 
-            {/* Grid de Fotos */}
+            {/* Grid com Miniaturas Reais */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {filteredPhotos.map((photo) => (
-                <div key={photo.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden p-4 space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-200 truncate max-w-[150px]">{photo.filename}</span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      photo.recommendation === 'Recomendada' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                <div 
+                  key={photo.id} 
+                  className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg group hover:border-slate-700 transition-all flex flex-col"
+                >
+                  {/* Container da Imagem Thumbnail */}
+                  <div 
+                    onClick={() => setSelectedPhotoModal(photo)}
+                    className="relative aspect-video bg-slate-950 overflow-hidden cursor-pointer"
+                  >
+                    {photo.url ? (
+                      <img 
+                        src={`${API_BASE_URL}${photo.url}`} 
+                        alt={photo.filename} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">Sem imagem</div>
+                    )}
+
+                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <span className="p-2 rounded-full bg-slate-900/80 text-white border border-slate-700">
+                        <Maximize2 className="w-4 h-4" />
+                      </span>
+                    </div>
+
+                    <span className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold shadow-md ${
+                      photo.recommendation === 'Recomendada' 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'bg-amber-500 text-slate-950'
                     }`}>
                       {photo.recommendation || 'Aguardando'}
                     </span>
                   </div>
 
-                  <div className="space-y-1.5 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <p className="flex justify-between">
-                      <span>Nitidez:</span> 
-                      <span className="text-slate-200 font-medium">{photo.blur_score ?? 'Calculando...'}</span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span>Exposição:</span> 
-                      <span className="text-slate-200 font-medium">{photo.exposure_status ?? 'Calculando...'}</span>
-                    </p>
+                  {/* Informações da Análise */}
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
+                    <span className="font-semibold text-slate-200 text-xs truncate block">{photo.filename}</span>
+
+                    <div className="space-y-1 text-xs text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
+                      <p className="flex justify-between">
+                        <span>Nitidez:</span> 
+                        <span className="text-slate-200 font-medium">{photo.blur_score ?? 'Calculando...'}</span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span>Exposição:</span> 
+                        <span className="text-slate-200 font-medium">{photo.exposure_status ?? 'Calculando...'}</span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -347,47 +367,51 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW: SESSÕES */}
-        {currentView === 'sessions' && (
-          <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
-            <h2 className="text-2xl font-bold text-white">Minhas Sessões</h2>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400 space-y-4">
-              <FolderOpen className="w-12 h-12 text-slate-600 mx-auto" />
-              <p className="text-sm">Sua sessão atual está salva e em andamento no sistema.</p>
-              {activeSession && (
-                <button 
-                  onClick={() => setCurrentView('gallery')}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-500 transition-colors"
-                >
-                  Abrir Sessão Atual
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* VIEW: CONFIGURAÇÕES */}
-        {currentView === 'settings' && (
-          <div className="p-8 space-y-6 max-w-4xl mx-auto w-full">
-            <h2 className="text-2xl font-bold text-white mb-6">Configurações de Análise</h2>
-            
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-              <div>
-                <h3 className="text-base font-semibold text-slate-200 mb-1">Limiar de Nitidez (Variância do Laplaciano)</h3>
-                <p className="text-xs text-slate-400 mb-4">
-                  Valores acima deste número serão marcados como "Recomendada". Valores abaixo serão "Revisar".
-                </p>
-                <div className="flex items-center gap-4">
-                  <input 
-                    type="range" 
-                    min="20" 
-                    max="150" 
-                    value={blurThreshold} 
-                    onChange={(e) => setBlurThreshold(Number(e.target.value))}
-                    className="w-full accent-blue-600 cursor-pointer"
-                  />
-                  <span className="text-sm font-bold text-blue-400 w-12 text-right">{blurThreshold}</span>
+        {/* MODAL DE AMPLIAÇÃO / ZOOM DA FOTO */}
+        {selectedPhotoModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="relative max-w-5xl w-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+              {/* Header do Modal */}
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
+                <div>
+                  <h3 className="font-bold text-white text-base">{selectedPhotoModal.filename}</h3>
+                  <p className="text-xs text-slate-400">
+                    Nitidez: <span className="text-slate-200 font-semibold">{selectedPhotoModal.blur_score}</span> | Exposição: <span className="text-slate-200 font-semibold">{selectedPhotoModal.exposure_status}</span>
+                  </p>
                 </div>
+                <button 
+                  onClick={() => setSelectedPhotoModal(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Corpo da Foto Expandida */}
+              <div className="flex-1 bg-slate-950 flex items-center justify-center p-4 overflow-hidden">
+                <img 
+                  src={`${API_BASE_URL}${selectedPhotoModal.url}`} 
+                  alt={selectedPhotoModal.filename} 
+                  className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl"
+                />
+              </div>
+
+              {/* Rodapé com Etiqueta */}
+              <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  selectedPhotoModal.recommendation === 'Recomendada' 
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                }`}>
+                  Status do Algoritmo: {selectedPhotoModal.recommendation}
+                </span>
+
+                <button 
+                  onClick={() => setSelectedPhotoModal(null)}
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs rounded-xl transition-colors"
+                >
+                  Fechar Visualização
+                </button>
               </div>
             </div>
           </div>
